@@ -61,7 +61,9 @@ fn main() -> Result<()> {
         })
         .context("failed to open pty")?;
 
-    let cmd = CommandBuilder::new(shell);
+    let current_dir = env::current_dir().context("failed to get current directory")?;
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.cwd(current_dir);
     let mut child = pair
         .slave
         .spawn_command(cmd)
