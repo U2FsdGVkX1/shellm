@@ -9,7 +9,7 @@ use super::{ChatMessage, ChatReply, LLMClient, Role};
 pub struct OpenAIClient {
     api_key: String,
     model: String,
-    endpoint: String,
+    base_url: String,
     client: Client,
     system_prompt: String,
 }
@@ -19,8 +19,8 @@ impl OpenAIClient {
         let api_key =
             env::var("OPENAI_API_KEY").context("OPENAI_API_KEY is required for OpenAI provider")?;
         let model = env::var("OPENAI_MODEL").unwrap_or("gpt-4o-mini".to_string());
-        let endpoint = env::var("OPENAI_BASE_URL")
-            .unwrap_or("https://api.openai.com/v1/chat/completions".to_string());
+        let base_url = env::var("OPENAI_BASE_URL")
+            .unwrap_or("https://api.openai.com/v1".to_string());
         let client = Client::builder().build()?;
 
         let system_prompt =
@@ -32,7 +32,7 @@ impl OpenAIClient {
         Ok(Self {
             api_key,
             model,
-            endpoint,
+            base_url,
             client,
             system_prompt,
         })
@@ -98,9 +98,10 @@ impl LLMClient for OpenAIClient {
             },
         };
 
+        let endpoint = format!("{}/chat/completions", self.base_url);
         let resp: OaiResponse = self
             .client
-            .post(&self.endpoint)
+            .post(&endpoint)
             .bearer_auth(&self.api_key)
             .json(&req)
             .send()

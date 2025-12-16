@@ -46,7 +46,7 @@ candidate: find . -name "*.py" -mtime -7
 |----------|-------------|
 | `OPENAI_API_KEY` | Your API key (required) |
 | `OPENAI_MODEL` | Model to use (default: `gpt-4o-mini`) |
-| `OPENAI_BASE_URL` | Custom API endpoint (optional) |
+| `OPENAI_BASE_URL` | Custom API base URL, (optional, default: `https://api.openai.com/v1`) |
 
 ## License
 
