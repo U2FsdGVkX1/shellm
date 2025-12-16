@@ -1,5 +1,7 @@
 # Shellm
 
+English | [简体中文](README_zh.md)
+
 An AI-powered terminal assistant. Describe what you want to do, and let AI generate the shell command for you.
 
 ## Installation
@@ -42,11 +44,55 @@ candidate: find . -name "*.py" -mtime -7
 
 ## Configuration
 
+Shellm supports configuration via environment variables and/or a TOML config file.
+
+### Environment Variables
+
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | Your API key (required) |
 | `OPENAI_MODEL` | Model to use (default: `gpt-4o-mini`) |
-| `OPENAI_BASE_URL` | Custom API base URL, (optional, default: `https://api.openai.com/v1`) |
+| `OPENAI_BASE_URL` | Custom API base URL (default: `https://api.openai.com/v1`) |
+| `SHELLM_CONFIG` | Path to custom config file (optional) |
+
+### Config File
+
+Create a config file at `~/.config/shellm/config.toml` to customize shellm's behavior:
+
+```bash
+mkdir -p ~/.config/shellm
+cp config.example.toml ~/.config/shellm/config.toml
+```
+
+#### Example Configuration
+
+```toml
+[llm]
+model = "gpt-4o-mini"
+# api_key = "sk-..."  # Or use OPENAI_API_KEY env var
+
+[prompt]
+# Custom prompt template with dynamic variables:
+#   {os}    - Operating system (Linux, Windows, macOS)
+#   {arch}  - CPU architecture (x86_64, aarch64, riscv64, etc.)
+#   {shell} - Current shell (bash, zsh, fish, powershell, cmd)
+#   {lang}  - Preferred language (zh-CN, en-US, etc.)
+template = """
+You are a focused shell copilot on {os} ({arch}) running {shell}.
+Please answer in {lang}.
+Always respond ONLY with a JSON object:
+{"command": "<shell command>", "answer": "brief human-readable note"}.
+"""
+
+[preference]
+language = "zh-CN"  # Or auto-detect from LANG env var
+```
+
+### Config Priority
+
+1. Config file settings take priority over environment variables
+2. If no config file exists, environment variables are used
+3. Default values are used as fallback
 
 ## License
 

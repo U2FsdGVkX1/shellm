@@ -3,11 +3,29 @@ use std::io::{self, Write};
 use anyhow::Result;
 use crossterm::{cursor, execute};
 use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers,
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEventKind, KeyModifiers,
 };
 use crossterm::terminal::{self, Clear, ClearType};
 
+use crate::i18n::{Language, MessageKey, t};
 use crate::llm::{ChatMessage, ChatReply, LLMClient, Role};
+
+struct BracketedPasteGuard;
+
+impl BracketedPasteGuard {
+    fn enable() -> Result<Self> {
+        let mut stdout = io::stdout();
+        execute!(stdout, EnableBracketedPaste)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for BracketedPasteGuard {
+    fn drop(&mut self) {
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, DisableBracketedPaste);
+    }
+}
 
 /// Get terminal width, default 80
 fn get_terminal_width() -> usize {
@@ -28,16 +46,17 @@ fn truncate_tail(s: &str, max_chars: usize) -> &str {
     chars.as_str()
 }
 
-fn prompt(buf: &str) {
-    print!("\r\x1b[2Kyou> {buf}");
+fn prompt(buf: &str, lang: &Language) {
+    let prompt_text = t(lang, MessageKey::PromptUser);
+    print!("\r\x1b[2K{prompt_text}{buf}");
     io::stdout().flush().ok();
 }
 
-pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
-    print!(
-        "\r\n\x1b[2K[LLM chat] Type your question. Ctrl+L accepts the command. Ctrl+C exits.\r\n"
-    );
+pub fn chat_mode(llm: &dyn LLMClient, lang: &Language) -> Result<Option<String>> {
+    let welcome = t(lang, MessageKey::WelcomeMessage);
+    print!("\r\n\x1b[2K{welcome}\r\n");
 
+    let _paste_guard = BracketedPasteGuard::enable()?;
     let mut history: Vec<ChatMessage> = Vec::new();
     let mut last_cmd: Option<String> = None;
     let mut last_reasoning: Option<String> = None;
@@ -45,7 +64,7 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
     let mut reasoning_anchor_saved = false;
     let mut buf = String::new();
 
-    prompt(&buf);
+    prompt(&buf, lang);
 
     let clear_reasoning_display = |expanded: &mut bool, saved: &mut bool| -> Result<()> {
         if *expanded && *saved {
@@ -63,15 +82,16 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
 
     loop {
         let evt = event::read()?;
-        if let Event::Key(key) = evt {
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-            match key.code {
+        match evt {
+            Event::Key(key) => {
+                if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    continue;
+                }
+                match key.code {
                 KeyCode::Enter => {
                     if reasoning_expanded && reasoning_anchor_saved {
                         clear_reasoning_display(&mut reasoning_expanded, &mut reasoning_anchor_saved)?;
-                        prompt(&buf);
+                        prompt(&buf, lang);
                     }
 
                     print!("\r\n");
@@ -80,13 +100,13 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
                     let line = buf.trim_end().to_string();
                     if line.is_empty() {
                         buf.clear();
-                        prompt(&buf);
+                        prompt(&buf, lang);
                         continue;
                     }
 
                     // Get terminal width for sliding window
                     let term_width = get_terminal_width();
-                    let thinking_text = "Thinking: ";
+                    let thinking_text = t(lang, MessageKey::ThinkingProcess);
                     let prefix = format!("\x1b[90m{}", thinking_text);
                     let prefix_visible_len = thinking_text.chars().count();
                     let max_display_chars = (term_width.saturating_sub(prefix_visible_len * 2)).max(20);
@@ -127,15 +147,18 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
                     reasoning_anchor_saved = false;
                     
                     let cmd = response.suggested_command.clone().unwrap_or_default();
-                    print!("assistant> {}\r\n", response.text.trim());
+                    let assistant_prompt = t(lang, MessageKey::PromptAssistant);
+                    print!("{}{}\r\n", assistant_prompt, response.text.trim());
                     if !cmd.is_empty() {
-                        print!("\x1b[2Kcandidate: {cmd}\r\n");
+                        let candidate_prompt = t(lang, MessageKey::PromptCandidate);
+                        print!("\x1b[2K{}{cmd}\r\n", candidate_prompt);
                         last_cmd = Some(cmd);
                     }
                     
                     // Show hint when reasoning can be expanded
                     if last_reasoning.is_some() {
-                        print!("\x1b[90m(Press Ctrl+R to toggle reasoning display)\x1b[0m\r\n");
+                        let hint = t(lang, MessageKey::HintToggleReasoning);
+                        print!("\x1b[90m{}\x1b[0m\r\n", hint);
                     }
                     
                     history.push(ChatMessage {
@@ -148,7 +171,7 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
                     });
 
                     buf.clear();
-                    prompt(&buf);
+                    prompt(&buf, lang);
                 }
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     // Toggle reasoning expansion/collapse
@@ -165,23 +188,25 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
                             )?;
                             reasoning_anchor_saved = true;
 
-                            print!("\x1b[90m--- Reasoning ---\r\n");
+                            let reasoning_start = t(lang, MessageKey::ReasoningStart);
+                            let reasoning_end = t(lang, MessageKey::ReasoningEnd);
+                            print!("\x1b[90m{}\r\n", reasoning_start);
                             for line in reasoning.lines() {
                                 print!("{}\r\n", line);
                             }
-                            print!("--- End Reasoning ---\x1b[0m\r\n");
+                            print!("{}\x1b[0m\r\n", reasoning_end);
                             io::stdout().flush().ok();
                         } else {
                             // Collapse: restore prompt position and clear lines below
                             clear_reasoning_display(&mut reasoning_expanded, &mut reasoning_anchor_saved)?;
                         }
-                        prompt(&buf);
+                        prompt(&buf, lang);
                     }
                 }
                 KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     if reasoning_expanded && reasoning_anchor_saved {
                         clear_reasoning_display(&mut reasoning_expanded, &mut reasoning_anchor_saved)?;
-                        prompt(&buf);
+                        prompt(&buf, lang);
                     }
                     if let Some(ref cmd) = last_cmd {
                         return Ok(Some(cmd.clone()));
@@ -196,15 +221,22 @@ pub fn chat_mode(llm: &dyn LLMClient) -> Result<Option<String>> {
                 KeyCode::Backspace => {
                     if !buf.is_empty() {
                         buf.pop();
-                        prompt(&buf);
+                        prompt(&buf, lang);
                     }
                 }
                 KeyCode::Char(c) => {
                     buf.push(c);
-                    prompt(&buf);
+                    prompt(&buf, lang);
                 }
                 _ => {}
+                }
             }
+            Event::Paste(pasted) => {
+                let normalized = pasted.replace(['\r', '\n'], " ");
+                buf.push_str(&normalized);
+                prompt(&buf, lang);
+            }
+            _ => {}
         }
     }
 }
