@@ -18,8 +18,14 @@ pub struct ChatMessage {
 pub struct ChatReply {
     pub text: String,
     pub suggested_command: Option<String>,
+    pub reasoning: Option<String>,
 }
 
 pub trait LLMClient: Send + Sync {
-    fn chat(&self, history: &[ChatMessage], user_input: &str) -> Result<ChatReply>;
+    fn chat(
+        &self,
+        history: &[ChatMessage],
+        user_input: &str,
+        on_reasoning: &mut dyn FnMut(&str),
+    ) -> Result<ChatReply>;
 }
