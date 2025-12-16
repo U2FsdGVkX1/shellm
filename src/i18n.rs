@@ -26,6 +26,7 @@ pub enum MessageKey {
     HintToggleReasoning,
     ReasoningStart,
     ReasoningEnd,
+    ReasoningTruncated,
 }
 
 pub fn t(lang: &Language, key: MessageKey) -> &'static str {
@@ -65,6 +66,10 @@ pub fn t(lang: &Language, key: MessageKey) -> &'static str {
         // Reasoning section end marker
         (Language::En, MessageKey::ReasoningEnd) => "--- End ---",
         (Language::Zh, MessageKey::ReasoningEnd) => "--- 结束 ---",
+
+        // Reasoning content truncated marker
+        (Language::En, MessageKey::ReasoningTruncated) => "(truncated to fit terminal height)",
+        (Language::Zh, MessageKey::ReasoningTruncated) => "（内容过长，已按终端高度截断）",
     }
 }
 
