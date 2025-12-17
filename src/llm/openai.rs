@@ -5,6 +5,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{ChatMessage, ChatReply, LLMClient, Role};
+use crate::i18n::{Language, MessageKey, t};
 
 pub struct OpenAIClient {
     api_key: String,
@@ -12,6 +13,7 @@ pub struct OpenAIClient {
     base_url: String,
     client: Client,
     system_prompt: String,
+    lang: Language,
 }
 
 impl OpenAIClient {
@@ -20,6 +22,7 @@ impl OpenAIClient {
         model: String,
         base_url: String,
         system_prompt: String,
+        lang: Language,
     ) -> Result<Self> {
         let client = Client::builder().build()?;
         Ok(Self {
@@ -28,6 +31,7 @@ impl OpenAIClient {
             base_url,
             client,
             system_prompt,
+            lang,
         })
     }
 }
@@ -179,7 +183,8 @@ impl LLMClient for OpenAIClient {
             }
             Err(e) => {
                 suggested_command = None;
-                display_text = format!("[JSON parse error: {}]\n{}", e, accumulated_content);
+                let error_prefix = t(&self.lang, MessageKey::JsonParseError);
+                display_text = format!("{}{}]\n{}", error_prefix, e, accumulated_content);
             }
         }
 

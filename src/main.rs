@@ -13,7 +13,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use crate::chat::chat_mode;
 use crate::config::{Config, SystemInfo, render_prompt};
-use crate::i18n::Language;
+use crate::i18n::{Language, MessageKey, t};
 use crate::llm::LLMClient;
 use crate::llm::openai::OpenAIClient;
 use crate::pty::PtySession;
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
         .llm
         .api_key
         .or_else(|| env::var("OPENAI_API_KEY").ok())
-        .context("OPENAI_API_KEY is required (set via config file or environment variable)")?;
+        .context(t(&ui_lang, MessageKey::ApiKeyRequired))?;
     let model = config
         .llm
         .model
@@ -49,6 +49,7 @@ fn main() -> Result<()> {
         model,
         base_url,
         system_prompt,
+        ui_lang,
     )?);
 
     let mut session = PtySession::new(config.shell.path.as_deref())?;

@@ -36,7 +36,7 @@ export OPENAI_API_KEY="your-api-key"
 ## Example
 
 ```
-[LLM chat] Type your question. Ctrl+L accepts the command. Ctrl+C exits.
+[LLM chat] Type your question. Ctrl+L accepts the command. Ctrl+C exits. Ctrl+R toggles reasoning.
 you> find all python files modified in the last 7 days
 assistant> Search for recently modified Python files
 candidate: find . -name "*.py" -mtime -7
@@ -84,8 +84,11 @@ Always respond ONLY with a JSON object:
 {"command": "<shell command>", "answer": "brief human-readable note"}.
 """
 
+[shell]
+# path = "/bin/zsh" # Optional: manually specify shell executable path
+
 [preference]
-language = "zh-CN"  # Or auto-detect from LANG env var
+language = "en-US"  # Or auto-detect from LANG env var
 ```
 
 ### Config Priority

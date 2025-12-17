@@ -27,6 +27,8 @@ pub enum MessageKey {
     ReasoningStart,
     ReasoningEnd,
     ReasoningTruncated,
+    ApiKeyRequired,
+    JsonParseError,
 }
 
 pub fn t(lang: &Language, key: MessageKey) -> &'static str {
@@ -70,6 +72,18 @@ pub fn t(lang: &Language, key: MessageKey) -> &'static str {
         // Reasoning content truncated marker
         (Language::En, MessageKey::ReasoningTruncated) => "(truncated to fit terminal height)",
         (Language::Zh, MessageKey::ReasoningTruncated) => "（内容过长，已按终端高度截断）",
+
+        // API key required error
+        (Language::En, MessageKey::ApiKeyRequired) => {
+            "OPENAI_API_KEY is required (set via config file or environment variable)"
+        }
+        (Language::Zh, MessageKey::ApiKeyRequired) => {
+            "需要 OPENAI_API_KEY（请通过配置文件或环境变量设置）"
+        }
+
+        // JSON parse error
+        (Language::En, MessageKey::JsonParseError) => "[JSON parse error: ",
+        (Language::Zh, MessageKey::JsonParseError) => "[JSON 解析错误: ",
     }
 }
 

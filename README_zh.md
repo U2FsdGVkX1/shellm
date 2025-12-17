@@ -84,6 +84,9 @@ Always respond ONLY with a JSON object:
 {"command": "<shell command>", "answer": "brief human-readable note"}.
 """
 
+[shell]
+# path = "/bin/zsh" # 可选：手动指定 shell 可执行文件路径
+
 [preference]
 language = "zh-CN"  # 或从 LANG 环境变量自动检测
 ```
