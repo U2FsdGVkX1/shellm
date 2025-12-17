@@ -2,20 +2,21 @@ mod chat;
 mod config;
 mod i18n;
 mod llm;
+mod pty;
 
 use std::env;
-use std::io::{self, Read, Write};
-use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::chat::chat_mode;
 use crate::config::{Config, SystemInfo, render_prompt};
 use crate::i18n::Language;
 use crate::llm::LLMClient;
 use crate::llm::openai::OpenAIClient;
+use crate::pty::PtySession;
 
 fn main() -> Result<()> {
     let config = Config::load()?;
@@ -50,95 +51,113 @@ fn main() -> Result<()> {
         system_prompt,
     )?);
 
-    let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-    let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows: 32,
-            cols: 120,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .context("failed to open pty")?;
-
-    let current_dir = env::current_dir().context("failed to get current directory")?;
-    let mut cmd = CommandBuilder::new(shell);
-    cmd.cwd(current_dir);
-    let mut child = pair
-        .slave
-        .spawn_command(cmd)
-        .context("failed to spawn shell")?;
-
-    let mut writer = pair
-        .master
-        .take_writer()
-        .context("failed to take pty writer")?;
-    let mut reader = pair
-        .master
-        .try_clone_reader()
-        .context("failed to clone pty reader")?;
-
-    // Relay child output to stdout on a dedicated thread.
-    thread::spawn(move || {
-        let mut stdout = io::stdout();
-        let mut buf = [0u8; 1024];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    let _ = stdout.write_all(&buf[..n]);
-                    let _ = stdout.flush();
-                }
-                Err(_) => break,
-            }
-        }
-    });
+    let mut session = PtySession::new()?;
+    session.spawn_output_relay()?;
 
     enable_raw_mode().context("failed to enter raw mode")?;
-    let res = run_event_loop(&mut writer, child.as_mut(), llm, ui_lang);
+    let res = run_event_loop(&mut session, llm, ui_lang);
     disable_raw_mode().ok();
     res
 }
 
-fn run_event_loop<W: Write>(
-    writer: &mut W,
-    child: &mut dyn portable_pty::Child,
+fn run_event_loop(
+    session: &mut PtySession,
     llm: Box<dyn LLMClient>,
     lang: Language,
 ) -> Result<()> {
-    let mut stdin = io::stdin();
-    let mut buf = [0u8; 1];
-
     loop {
-        if child
-            .try_wait()
-            .map(|status| status.is_some())
-            .unwrap_or(false)
-        {
+        if session.child_exited() {
             break;
         }
 
-        let n = stdin.read(&mut buf).context("failed to read stdin")?;
-        if n == 0 {
-            continue;
-        }
+        if event::poll(Duration::from_millis(100))? {
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Release {
+                        continue;
+                    }
 
-        let byte = buf[0];
+                    // Ctrl+L enters LLM chat mode
+                    if key.code == KeyCode::Char('l')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        let cmd = chat_mode(llm.as_ref(), &lang)?;
+                        session.write(b"\r")?;
+                        if let Some(cmd) = cmd {
+                            session.write(cmd.as_bytes())?;
+                        }
+                        continue;
+                    }
 
-        // Ctrl+L enters LLM chat mode
-        if byte == 0x0c {
-            let cmd = chat_mode(llm.as_ref(), &lang)?;
-            writer.write_all(b"\x0d")?;
-            if let Some(cmd) = cmd {
-                writer.write_all(cmd.as_bytes())?;
+                    handle_key_event(session, key)?;
+                }
+                Event::Paste(text) => {
+                    session.write(text.as_bytes())?;
+                }
+                Event::Resize(cols, rows) => {
+                    session.resize(cols, rows);
+                }
+                _ => {}
             }
-            writer.flush()?;
-            continue;
         }
-
-        writer.write_all(&buf[..n])?;
-        writer.flush()?;
     }
 
+    Ok(())
+}
+
+fn handle_key_event(
+    session: &mut PtySession,
+    key: crossterm::event::KeyEvent,
+) -> Result<()> {
+    match key.code {
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                let ctrl_char = (c.to_ascii_lowercase() as u8) & 0x1f;
+                session.write(&[ctrl_char])?;
+            } else if key.modifiers.contains(KeyModifiers::ALT) {
+                session.write(&[0x1b])?;
+                let mut buf = [0u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                session.write(s.as_bytes())?;
+            } else {
+                let mut buf = [0u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                session.write(s.as_bytes())?;
+            }
+        }
+        KeyCode::Enter => session.write(b"\r")?,
+        KeyCode::Backspace => session.write(&[0x7f])?,
+        KeyCode::Tab => session.write(b"\t")?,
+        KeyCode::Esc => session.write(&[0x1b])?,
+        KeyCode::Up => session.write(b"\x1b[A")?,
+        KeyCode::Down => session.write(b"\x1b[B")?,
+        KeyCode::Right => session.write(b"\x1b[C")?,
+        KeyCode::Left => session.write(b"\x1b[D")?,
+        KeyCode::Home => session.write(b"\x1b[H")?,
+        KeyCode::End => session.write(b"\x1b[F")?,
+        KeyCode::PageUp => session.write(b"\x1b[5~")?,
+        KeyCode::PageDown => session.write(b"\x1b[6~")?,
+        KeyCode::Delete => session.write(b"\x1b[3~")?,
+        KeyCode::Insert => session.write(b"\x1b[2~")?,
+        KeyCode::F(n) => {
+            let seq = match n {
+                1 => b"\x1bOP".as_slice(),
+                2 => b"\x1bOQ".as_slice(),
+                3 => b"\x1bOR".as_slice(),
+                4 => b"\x1bOS".as_slice(),
+                5 => b"\x1b[15~".as_slice(),
+                6 => b"\x1b[17~".as_slice(),
+                7 => b"\x1b[18~".as_slice(),
+                8 => b"\x1b[19~".as_slice(),
+                9 => b"\x1b[20~".as_slice(),
+                10 => b"\x1b[21~".as_slice(),
+                11 => b"\x1b[23~".as_slice(),
+                12 => b"\x1b[24~".as_slice(),
+                _ => return Ok(()),
+            };
+            session.write(seq)?;
+        }
+        _ => {}
+    }
     Ok(())
 }
