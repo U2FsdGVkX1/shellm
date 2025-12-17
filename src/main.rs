@@ -51,7 +51,7 @@ fn main() -> Result<()> {
         system_prompt,
     )?);
 
-    let mut session = PtySession::new()?;
+    let mut session = PtySession::new(config.shell.path.as_deref())?;
     session.spawn_output_relay()?;
 
     enable_raw_mode().context("failed to enter raw mode")?;
