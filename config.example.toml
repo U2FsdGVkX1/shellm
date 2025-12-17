@@ -30,6 +30,26 @@ Always respond with a markdown code block containing a JSON object:
 Prefer safe defaults; if unsure ask via answer.
 """
 
+[shell]
+# Shell executable path (optional)
+# If not set, shellm will auto-detect:
+#   - Linux/macOS: Uses $SHELL environment variable, defaults to /bin/bash
+#   - Windows: Detects PowerShell or CMD based on environment
+#
+# Examples:
+#   Linux/macOS:
+#     path = "/bin/zsh"
+#     path = "/usr/bin/fish"
+#   Windows:
+#     path = "powershell.exe"
+#     path = "pwsh.exe"           # PowerShell Core
+#     path = "cmd.exe"
+#     path = "C:\\Program Files\\Git\\bin\\bash.exe"  # Git Bash
+#
+# Note: On Linux/macOS, $SHELL usually provides the correct shell,
+# so this config is typically only needed for Windows or special cases.
+# path = ""
+
 [preference]
 # Language preference (if unset, inferred from the LANG environment variable)
 language = "zh-CN"

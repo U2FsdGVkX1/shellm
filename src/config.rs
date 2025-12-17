@@ -20,6 +20,8 @@ pub struct Config {
     #[serde(default)]
     pub prompt: PromptConfig,
     #[serde(default)]
+    pub shell: ShellConfig,
+    #[serde(default)]
     pub preference: PreferenceConfig,
 }
 
@@ -46,6 +48,12 @@ impl Default for PromptConfig {
 
 fn default_prompt_template() -> String {
     DEFAULT_PROMPT_TEMPLATE.to_string()
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ShellConfig {
+    /// Shell executable path. If not set, auto-detect based on OS.
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]

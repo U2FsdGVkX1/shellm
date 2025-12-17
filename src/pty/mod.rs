@@ -18,8 +18,11 @@ pub struct PtySession {
 }
 
 impl PtySession {
-    pub fn new() -> Result<Self> {
-        let shell = detect_shell();
+    
+    pub fn new(shell_path: Option<&str>) -> Result<Self> {
+        let shell = shell_path
+            .map(|s| s.to_string())
+            .unwrap_or_else(detect_shell);
         let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
 
         let pty_system = native_pty_system();
